@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    
+    <!-- Meta tags para PWA e iOS HomeScreen -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="AnesMeta">
+    <meta name="theme-color" content="#131314">
+    <link rel="apple-touch-icon" href="https://img.icons8.com/color/180/syringe.png">
+
+    <!-- Manifest embebido para soporte PWA en GitHub Pages e iOS -->
+    <link rel="manifest" href='data:application/manifest+json,{"name":"AnesMeta Clinical Assistant","short_name":"AnesMeta","start_url":".","display":"standalone","background_color":"#131314","theme_color":"#131314","icons":[{"src":"https://img.icons8.com/color/180/syringe.png","sizes":"180x180","type":"image/png"}]}'>
+
+    <title>AnesMeta - Consultoría Perioperatoria y Meta-Buscador</title>
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'media',
+            theme: {
+                extend: {
+                    colors: {
+                        gemini: {
+                            bg: '#131314',
+                            card: '#1e1e20',
+                            sidebar: '#1e1e20',
+                            accent: '#a8c7fa',
+                            text: '#e3e2e6',
+                            muted: '#8e918f',
+                            border: '#333537',
+                            active: '#282a2c'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- PDF.js CDN (Opcional) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <script>
+        if (window['pdfjs-dist/build/pdf']) {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+        }
+    </script>
+
+    <style>
+        body {
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        .selectable {
+            user-select: text;
+        }
+        ::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(150, 150, 150, 0.25);
+            border-radius: 4px;
+        }
+        .drawer-transition {
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .backdrop-transition {
+            transition: opacity 0.3s ease;
+        }
+        /* Resaltado de términos */
+        mark {
+            background-color: rgba(250, 204, 21, 0.4);
+            color: inherit;
+            padding: 0.1em 0.3em;
+            border-radius: 0.2em;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 dark:bg-gemini-bg text-gray-900 dark:text-gemini-text h-full flex flex-col overflow-hidden">
+
+    <!-- Top App Bar (Estilo Gemini) -->
+    <header class="bg-white dark:bg-gemini-sidebar border-b border-gray-200 dark:border-gemini-border px-4 py-3 flex items-center justify-between shrink-0 z-20">
+        <div class="flex items-center gap-3">
+            <button id="btn-open-drawer" class="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gemini-active text-gray-700 dark:text-gemini-text text-xl focus:outline-none" aria-label="Abrir Menú">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+            <div class="flex items-center gap-2">
+                <div class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-sm">
+                    <i class="fa-solid fa-syringe"></i>
+                </div>
+                <span class="font-semibold text-lg tracking-tight">AnesMeta</span>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+            <button id="btn-open-library" class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-50 dark:bg-gemini-active text-blue-600 dark:text-gemini-accent text-xs font-medium hover:bg-blue-100 dark:hover:bg-gray-700 transition">
+                <i class="fa-solid fa-book-medical"></i>
+                <span id="doc-count-badge">0 Docs</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Drawer Navigation (Menú Desplegable Lateral Izquierdo) -->
+    <div id="drawer-backdrop" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 hidden backdrop-transition opacity-0"></div>
+    <aside id="drawer" class="fixed top-0 left-0 bottom-0 w-80 max-w-[85vw] bg-white dark:bg-gemini-sidebar border-r border-gray-200 dark:border-gemini-border z-50 transform -translate-x-full drawer-transition flex flex-col">
+        <!-- Header Drawer -->
+        <div class="p-4 border-b border-gray-200 dark:border-gemini-border flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <i class="fa-solid fa-user-doctor text-blue-500 text-lg"></i>
+                <span class="font-bold text-base">Herramientas Clínicas</span>
+            </div>
+            <button id="btn-close-drawer" class="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gemini-active text-gray-500">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+        </div>
+
+        <!-- Contenido Navegación -->
+        <div class="flex-1 overflow-y-auto p-4 space-y-6">
+            
+            <!-- Herramientas Interactivas -->
+            <div>
+                <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Herramientas Quirófano</h3>
+                <div class="space-y-1">
+                    <button onclick="app.openPediatricCalc()" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-100 dark:hover:bg-gemini-active text-left transition">
+                        <i class="fa-solid fa-calculator text-blue-400 w-5 text-center"></i>
+                        <span class="text-sm font-medium">Calculadora Pediátrica</span>
+                    </button>
+                    <button onclick="app.openChecklistModal()" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-100 dark:hover:bg-gemini-active text-left transition">
+                        <i class="fa-solid fa-clipboard-check text-red-400 w-5 text-center"></i>
+                        <span class="text-sm font-medium">Checklists de Emergencia</span>
+                    </button>
+                    <button onclick="app.openLibraryModal()" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-100 dark:hover:bg-gemini-active text-left transition">
+                        <i class="fa-solid fa-folder-plus text-amber-400 w-5 text-center"></i>
+                        <span class="text-sm font-medium">Gestionar Bibliografía</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Accesos Rápidos: Situaciones Críticas -->
+            <div>
+                <h3 class="text-xs font-semibold text-red-500 uppercase tracking-wider mb-2">🚨 Crisis Anestésicas</h3>
+                <div class="grid grid-cols-1 gap-1">
+                    <button onclick="app.quickSearch('anafilaxia')" class="px-3 py-2 text-left text-xs font-medium rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-red-600 dark:text-red-400 flex items-center justify-between">
+                        <span>Anafilaxia Perioperatoria</span>
+                        <i class="fa-solid fa-chevron-right text-[10px]"></i>
+                    </button>
+                    <button onclick="app.quickSearch('hipertermia maligna dantroleno')" class="px-3 py-2 text-left text-xs font-medium rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-red-600 dark:text-red-400 flex items-center justify-between">
+                        <span>Hipertermia Maligna</span>
+                        <i class="fa-solid fa-chevron-right text-[10px]"></i>
+                    </button>
+                    <button onclick="app.quickSearch('toxicidad anestesicos locales LAST emulsion lipidica')" class="px-3 py-2 text-left text-xs font-medium rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-red-600 dark:text-red-400 flex items-center justify-between">
+                        <span>Toxicidad por AL (LAST)</span>
+                        <i class="fa-solid fa-chevron-right text-[10px]"></i>
+                    </button>
+                    <button onclick="app.quickSearch('via aerea dificil intubacion no ventilable')" class="px-3 py-2 text-left text-xs font-medium rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-red-600 dark:text-red-400 flex items-center justify-between">
+                        <span>Vía Aérea Difícil</span>
+                        <i class="fa-solid fa-chevron-right text-[10px]"></i>
+                    </button>
+                    <button onclick="app.quickSearch('laringoespasmo rescate')" class="px-3 py-2 text-left text-xs font-medium rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-red-600 dark:text-red-400 flex items-center justify-between">
+                        <span>Laringoespasmo / Broncoespasmo</span>
+                        <i class="fa-solid fa-chevron-right text-[10px]"></i>
+                    </button>
+                    <button onclick="app.quickSearch('shock hemorragico transfusion masiva')" class="px-3 py-2 text-left text-xs font-medium rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-red-600 dark:text-red-400 flex items-center justify-between">
+                        <span>Shock Hemorrágico</span>
+                        <i class="fa-solid fa-chevron-right text-[10px]"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Accesos Rápidos: Rutina Perioperatoria -->
+            <div>
+                <h3 class="text-xs font-semibold text-blue-500 uppercase tracking-wider mb-2">📋 Rutina Quirúrgica</h3>
+                <div class="grid grid-cols-1 gap-1">
+                    <button onclick="app.quickSearch('ayuno preoperatorio liquidos claros')" class="px-3 py-2 text-left text-xs font-medium rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/30 text-blue-600 dark:text-blue-400 flex items-center justify-between">
+                        <span>Ayuno Preoperatorio</span>
+                        <i class="fa-solid fa-chevron-right text-[10px]"></i>
+                    </button>
+                    <button onclick="app.quickSearch('profilaxis antibiotica re-dosificacion')" class="px-3 py-2 text-left text-xs font-medium rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/30 text-blue-600 dark:text-blue-400 flex items-center justify-between">
+                        <span>Profilaxis Antibiótica</span>
+                        <i class="fa-solid fa-chevron-right text-[10px]"></i>
+                    </button>
+                    <button onclick="app.quickSearch('NVPO PONV riesgo dexametasona ondansetron')" class="px-3 py-2 text-left text-xs font-medium rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/30 text-blue-600 dark:text-blue-400 flex items-center justify-between">
+                        <span>Prevención NVPO / PONV</span>
+                        <i class="fa-solid fa-chevron-right text-[10px]"></i>
+                    </button>
+                    <button onclick="app.quickSearch('anticoagulacion anestesia neuroaxial suspendimiento')" class="px-3 py-2 text-left text-xs font-medium rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/30 text-blue-600 dark:text-blue-400 flex items-center justify-between">
+                        <span>Anticoagulación y Neuroaxiales</span>
+                        <i class="fa-solid fa-chevron-right text-[10px]"></i>
+                    </button>
+                    <button onclick="app.quickSearch('reversion sugammadex neostigmina')" class="px-3 py-2 text-left text-xs font-medium rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/30 text-blue-600 dark:text-blue-400 flex items-center justify-between">
+                        <span>Reversión Neuro-Muscular</span>
+                        <i class="fa-solid fa-chevron-right text-[10px]"></i>
+                    </button>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Footer Drawer -->
+        <div class="p-4 border-t border-gray-200 dark:border-gemini-border text-[11px] text-gray-500 dark:text-gemini-muted text-center">
+            Modo 100% Offline & Execución Local. No guarda datos de pacientes.
+        </div>
+    </aside>
+
+    <!-- ÁREA PRINCIPAL DE CONTENIDO (Scrollable) -->
+    <main class="flex-1 overflow-y-auto p-4 md:p-6 max-w-4xl mx-auto w-full flex flex-col space-y-4 pb-28">
+
+        <!-- Banner Exención de Responsabilidad -->
+        <div class="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 text-xs flex items-start gap-2">
+            <i class="fa-solid fa-triangle-exclamation mt-0.5 text-amber-500 shrink-0"></i>
+            <div>
+                <strong>Aviso de Seguridad Clínica:</strong> La herramienta solo recupera texto literal de su bibliografía cargada. No sustituye el juicio médico. Las dosis deben verificarse siempre en la fuente original.
+            </div>
+        </div>
+
+        <!-- Estado Inicial / Vacío -->
+        <div id="initial-state" class="flex-1 flex flex-col items-center justify-center text-center p-6 space-y-4 my-auto">
+            <div class="w-16 h-16 rounded-2xl bg-blue-500/10 text-blue-500 flex items-center justify-center text-3xl">
+                <i class="fa-solid fa-magnifying-glass-chart"></i>
+            </div>
+            <h2 class="text-xl font-bold tracking-tight">Meta-Buscador Bibliográfico</h2>
+            <p class="text-xs text-gray-500 dark:text-gemini-muted max-w-sm">
+                Consulte sus manuales, protocolos y guías clínicas indexados de forma local. Respuestas basadas 100% en sus fuentes sin alucinaciones.
+            </p>
+            
+            <div id="quick-chips" class="flex flex-wrap justify-center gap-2 pt-2">
+                <button onclick="app.quickSearch('LAST')" class="px-3 py-1.5 rounded-full bg-gray-200 dark:bg-gemini-card hover:bg-gray-300 dark:hover:bg-gemini-active text-xs font-medium">⚡ Rescate LAST</button>
+                <button onclick="app.quickSearch('Hipertermia Maligna')" class="px-3 py-1.5 rounded-full bg-gray-200 dark:bg-gemini-card hover:bg-gray-300 dark:hover:bg-gemini-active text-xs font-medium">🔥 Dantroleno</button>
+                <button onclick="app.quickSearch('Ayuno')" class="px-3 py-1.5 rounded-full bg-gray-200 dark:bg-gemini-card hover:bg-gray-300 dark:hover:bg-gemini-active text-xs font-medium">⏱️ Guía Ayuno</button>
+            </div>
+        </div>
+
+        <!-- PANEL DE RESULTADOS -->
+        <div id="results-container" class="space-y-4 hidden">
+            
+            <!-- Panel 1: Lectura Rápida / Consenso Extractivo -->
+            <div id="consensus-panel" class="bg-blue-50/50 dark:bg-gemini-card border border-blue-200 dark:border-blue-900/40 rounded-2xl p-4 space-y-3">
+                <div class="flex items-center justify-between border-b border-blue-200/50 dark:border-blue-900/30 pb-2">
+                    <div class="flex items-center gap-2 text-blue-600 dark:text-gemini-accent font-semibold text-sm">
+                        <i class="fa-solid fa-bolt text-amber-400"></i>
+                        <span>Consenso de Lectura Rápida (Puntos Clave)</span>
+                    </div>
+                    <span class="text-[10px] bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full">Síntesis Extractiva Directa</span>
+                </div>
+                <div id="consensus-bullets" class="space-y-2 text-xs leading-relaxed selectable">
+                    <!-- Sentencias consensuadas generadas por script -->
+                </div>
+            </div>
+
+            <!-- Panel 2: Desglose por Citas Literales -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gemini-muted px-1">
+                    <span id="results-count-label">0 Citas encontradas</span>
+                    <span>Ordenado por Relevancia BM25</span>
+                </div>
+                
+                <div id="citations-list" class="space-y-3">
+                    <!-- Citas inyectadas -->
+                </div>
+            </div>
+
+        </div>
+
+    </main>
+
+    <!-- BARRA DE BÚSQUEDA INFERIOR (Estilo Gemini Mobile Floating Bar) -->
+    <div class="fixed bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-gray-100 dark:from-gemini-bg via-gray-100 dark:via-gemini-bg to-transparent z-30">
+        <div class="max-w-2xl mx-auto relative">
+            <form id="search-form" onsubmit="app.handleSearch(event)" class="relative flex items-center">
+                <input 
+                    id="search-input" 
+                    type="text" 
+                    placeholder="Buscar fármaco, crisis, dosis o protocolo..." 
+                    class="w-full pl-5 pr-12 py-3.5 rounded-full bg-white dark:bg-gemini-card border border-gray-300 dark:border-gemini-border text-gray-900 dark:text-gemini-text placeholder-gray-400 text-sm shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+                    autocomplete="off"
+                >
+                <button type="submit" class="absolute right-2 p-2.5 rounded-full bg-blue-600 text-white hover:bg-blue-700 transition flex items-center justify-center w-9 h-9">
+                    <i class="fa-solid fa-arrow-up text-sm"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL 1: GESTOR DE BIBLIOTECA -->
+    <div id="modal-library" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-gemini-card rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl border border-gray-200 dark:border-gemini-border flex flex-col max-h-[85vh]">
+            <div class="p-4 border-b border-gray-200 dark:border-gemini-border flex justify-between items-center">
+                <h3 class="font-bold text-base flex items-center gap-2">
+                    <i class="fa-solid fa-book-medical text-blue-500"></i>
+                    Biblioteca Bibliográfica Local
+                </h3>
+                <button onclick="app.closeLibraryModal()" class="p-1 rounded-full text-gray-400 hover:text-white">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            
+            <div class="p-4 space-y-4 overflow-y-auto flex-1">
+                <!-- Dropzone -->
+                <div id="dropzone" class="border-2 border-dashed border-gray-300 dark:border-gemini-border rounded-xl p-6 text-center hover:border-blue-500 transition cursor-pointer bg-gray-50 dark:bg-gemini-sidebar">
+                    <input type="file" id="file-input" multiple accept=".pdf,.txt,.md,.html,.json" class="hidden" onchange="app.handleFiles(this.files)">
+                    <i class="fa-solid fa-cloud-arrow-up text-3xl text-blue-500 mb-2"></i>
+                    <p class="text-xs font-semibold">Arrastre sus documentos o toque para examinar</p>
+                    <p class="text-[10px] text-gray-400 mt-1">Soporta PDF, TXT, MD, HTML o JSON. Indexación 100% local en navegador.</p>
+                </div>
+
+                <!-- Lista de documentos cargados -->
+                <div>
+                    <h4 class="text-xs font-bold uppercase text-gray-400 mb-2">Documentos Indexados en IndexedDB</h4>
+                    <div id="indexed-docs-list" class="space-y-2 max-h-48 overflow-y-auto">
+                        <!-- Inyectado por JS -->
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-4 border-t border-gray-200 dark:border-gemini-border flex justify-between items-center bg-gray-50 dark:bg-gemini-sidebar">
+                <button onclick="app.clearLibrary()" class="text-xs text-red-500 font-medium hover:underline">Vaciar Biblioteca</button>
+                <button onclick="app.closeLibraryModal()" class="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-semibold">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 2: CALCULADORA PEDIÁTRICA -->
+    <div id="modal-pediatric" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-gemini-card rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl border border-gray-200 dark:border-gemini-border flex flex-col max-h-[85vh]">
+            <div class="p-4 border-b border-gray-200 dark:border-gemini-border flex justify-between items-center">
+                <h3 class="font-bold text-base flex items-center gap-2">
+                    <i class="fa-solid fa-calculator text-blue-500"></i>
+                    Calculadora Perioperatoria Pediátrica
+                </h3>
+                <button onclick="app.closePediatricCalc()" class="p-1 rounded-full text-gray-400 hover:text-white">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <div class="p-4 space-y-4 overflow-y-auto flex-1">
+                <!-- Input de Peso -->
+                <div class="bg-blue-50 dark:bg-gemini-sidebar p-3 rounded-xl flex items-center justify-between border border-blue-200 dark:border-gemini-border">
+                    <label class="text-xs font-bold text-blue-900 dark:text-blue-300">Peso del Paciente (kg):</label>
+                    <div class="flex items-center gap-2">
+                        <input type="number" id="ped-weight" value="15" min="1" max="80" step="0.5" class="w-20 p-2 text-center font-bold text-base rounded-lg bg-white dark:bg-gemini-card border border-gray-300 dark:border-gemini-border text-blue-600 dark:text-gemini-accent" oninput="app.calculatePediatricDoses()">
+                        <span class="text-xs font-bold">kg</span>
+                    </div>
+                </div>
+
+                <!-- Tabla de Dosis -->
+                <div class="overflow-x-auto">
+                    <table class="w-full text-xs text-left border-collapse">
+                        <thead>
+                            <tr class="border-b border-gray-200 dark:border-gemini-border text-gray-400 font-semibold uppercase text-[10px]">
+                                <th class="p-2">Fármaco</th>
+                                <th class="p-2">Dosis Referencia</th>
+                                <th class="p-2 text-right">Dosis Calculada</th>
+                            </tr>
+                        </thead>
+                        <tbody id="pediatric-doses-table" class="divide-y divide-gray-200 dark:divide-gemini-border">
+                            <!-- Inyectado por JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="p-3 border-t border-gray-200 dark:border-gemini-border bg-gray-50 dark:bg-gemini-sidebar text-right">
+                <button onclick="app.closePediatricCalc()" class="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-semibold">Listo</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 3: CHECKLISTS DE EMERGENCIA -->
+    <div id="modal-checklist" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-gemini-card rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl border border-gray-200 dark:border-gemini-border flex flex-col max-h-[85vh]">
+            <div class="p-4 border-b border-gray-200 dark:border-gemini-border flex justify-between items-center">
+                <h3 class="font-bold text-base flex items-center gap-2 text-red-500">
+                    <i class="fa-solid fa-clipboard-check"></i>
+                    Checklists de Crisis Anestésica
+                </h3>
+                <button onclick="app.closeChecklistModal()" class="p-1 rounded-full text-gray-400 hover:text-white">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <div class="p-4 space-y-4 overflow-y-auto flex-1">
+                <!-- Selector de Crisis -->
+                <div class="flex gap-2">
+                    <button onclick="app.loadChecklist('hm')" id="tab-hm" class="flex-1 py-2 text-xs font-bold rounded-xl border border-red-500/30 bg-red-500/10 text-red-400">Hipertermia Maligna</button>
+                    <button onclick="app.loadChecklist('last')" id="tab-last" class="flex-1 py-2 text-xs font-bold rounded-xl border border-gray-300 dark:border-gemini-border text-gray-400">Toxicidad LAST</button>
+                </div>
+
+                <!-- Temporizador de Apoyo -->
+                <div class="bg-red-500/10 border border-red-500/20 p-3 rounded-xl flex items-center justify-between">
+                    <div>
+                        <div class="text-[10px] text-red-400 font-bold uppercase">Cronómetro de Crisis</div>
+                        <div id="timer-display" class="text-xl font-mono font-bold text-red-500">00:00</div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="app.toggleTimer()" id="btn-timer-toggle" class="px-3 py-1.5 bg-red-600 text-white text-xs font-bold rounded-lg">Iniciar</button>
+                        <button onclick="app.resetTimer()" class="px-3 py-1.5 bg-gray-600 text-white text-xs font-bold rounded-lg">Reset</button>
+                    </div>
+                </div>
+
+                <!-- Pasos del Checklist -->
+                <div id="checklist-steps" class="space-y-2">
+                    <!-- Inyectado por JS -->
+                </div>
+            </div>
+
+            <div class="p-3 border-t border-gray-200 dark:border-gemini-border bg-gray-50 dark:bg-gemini-sidebar text-right">
+                <button onclick="app.closeChecklistModal()" class="px-4 py-2 bg-gray-600 text-white rounded-xl text-xs font-semibold">Cerrar Checklist</button>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- JAVASCRIPT DE LA APLICACIÓN -->
+    <script>
+        /**
+         * DICCIONARIO DE EXPANSION Y SINÓNIMOS CLINICOS (ES/EN)
+         */
+        const CLINICAL_SYNONYMS = {
+            "last": ["toxicidad por anestesicos locales", "bupivacaina toxicidad", "emulsion lipidica", "intralipid", "local anesthetic systemic toxicity"],
+            "hipertermia maligna": ["dantroleno", "dantrolene", "ryanodine", "hm", "malignant hyperthermia"],
+            "nvpo": ["ponv", "nauseas y vomitos postoperatorios", "dexametasona", "ondansetron", "postoperative nausea"],
+            "rcp": ["parada cardiaca", "reanimacion cardiopulmonar", "acls", "asistolia", "fibrilacion ventricular"],
+            "ayuno": ["fasting", "liquidos claros", "solidos", "aspiraion", "mendelson"],
+            "via aerea dificil": ["vad", "intubacion fallida", "videolaringoscopio", "cricotiroidotomia", "fastrach"],
+            "sugammadex": ["bridion", "reversion neuromuscular", "rocuronio", "vecuronio"],
+            "anafilaxia": ["shock anafilactico", "adrenalina", "epinefrina", "triptasa"]
+        };
+
+        /**
+         * FÁRMACOS PEDIÁTRICOS BASE
+         */
+        const PEDIATRIC_DRUGS = [
+            { name: "Propofol (Inducción)", dose: "2.5 - 3.5 mg/kg", calc: w => `${(w * 3).toFixed(1)} mg (${((w * 3)/10).toFixed(1)} ml al 1%)` },
+            { name: "Fentanilo", dose: "1 - 2 mcg/kg", calc: w => `${(w * 1.5).toFixed(1)} mcg (${((w * 1.5)/50).toFixed(2)} ml)` },
+            { name: "Rocuronio", dose: "0.6 mg/kg", calc: w => `${(w * 0.6).toFixed(1)} mg (${((w * 0.6)/10).toFixed(2)} ml)` },
+            { name: "Sugammadex (Reversión)", dose: "2 - 4 mg/kg", calc: w => `${(w * 2).toFixed(1)} - ${(w * 4).toFixed(1)} mg` },
+            { name: "Atropina (Bradicardia)", dose: "0.02 mg/kg (Mín 0.1mg)", calc: w => `${Math.max(0.1, w * 0.02).toFixed(2)} mg` },
+            { name: "Adrenalina (RCP Pediátrica)", dose: "10 mcg/kg (0.01 mg/kg)", calc: w => `${(w * 10).toFixed(0)} mcg (${(w * 0.1).toFixed(1)} ml diluido 1:10.000)` },
+            { name: "Paracetamol IV", dose: "15 mg/kg", calc: w => `${(w * 15).toFixed(1)} mg (${((w * 15)/10).toFixed(1)} ml)` },
+            { name: "Dexametasona (NVPO)", dose: "0.15 mg/kg (Máx 5mg)", calc: w => `${Math.min(5, w * 0.15).toFixed(2)} mg` }
+        ];
+
+        /**
+         * CHECKLISTS DE CRISIS
+         */
+        const CHECKLIST_DATA = {
+            hm: [
+                "1. Pedir ayuda de emergencia y traer carro de Hipertermia Maligna.",
+                "2. Suspender inmediatamente agentes inhalados (sevoflurano, desflurano) y Succinilcolina.",
+                "3. Hiperventilar con O2 al 100% a flujos altos (>10 L/min). Cambiar tubuladuras si es posible.",
+                "4. Administrar DANTROLENO IV: Bolus inicial de 2.5 mg/kg rápido.",
+                "5. Reconstitution de Dantroleno: 20 mg por vial con 60 ml de agua destilada esterilizada.",
+                "6. Enfriamiento activo: Lavado cavidades con suero frío, hielo en axilas/ingles (Parar a los 38°C).",
+                "7. Tratar hiperpotasemia (Insulina + Glucosa) y acidosis (Bicarbonato 1 mEq/kg)."
+            ],
+            last: [
+                "1. Detener inmediatamente la inyección de Anestésico Local.",
+                "2. Pedir ayuda y solicitar el Kit de Emulsión Lipídica al 20%.",
+                "3. Mantener vía aérea protegida e hiperventilar con O2 al 100% (evitar acidosis que empeora toxicidad).",
+                "4. EMULSIÓN LIPÍDICA 20%: Bolus inicial de 1.5 ml/kg en 1 minuto (~100 ml en adulto 70kg).",
+                "5. Iniciar infusión continua de Emulsión Lipídica a 0.25 ml/kg/min.",
+                "6. Si la inestabilidad persiste, repetir bolus de 1.5 ml/kg cada 3-5 min (Máx 3 bolus).",
+                "7. Evitar vasopresina, bloqueantes de canales de calcio y betabloqueantes. Adrenalina a dosis bajas (<1 mcg/kg)."
+            ]
+        };
+
+        /**
+         * ENGINE PRINCIPAL
+         */
+        class AnesthesiaApp {
+            constructor() {
+                this.db = null;
+                this.docs = [];
+                this.timerInterval = null;
+                this.timerSeconds = 0;
+                this.initDB();
+                this.bindEvents();
+            }
+
+            // Inicialización de IndexedDB
+            async initDB() {
+                return new Promise((resolve, reject) => {
+                    const request = indexedDB.open("AnesMetaDB", 1);
+                    request.onupgradeneeded = (e) => {
+                        const db = e.target.result;
+                        if (!db.objectStoreNames.contains("documents")) {
+                            db.createObjectStore("documents", { keyPath: "id", autoIncrement: true });
+                        }
+                    };
+                    request.onsuccess = (e) => {
+                        this.db = e.target.result;
+                        this.refreshDocList();
+                        resolve();
+                    };
+                    request.onerror = (e) => console.error("Error DB:", e);
+                });
+            }
+
+            bindEvents() {
+                // Drawer events
+                document.getElementById('btn-open-drawer').onclick = () => this.toggleDrawer(true);
+                document.getElementById('btn-close-drawer').onclick = () => this.toggleDrawer(false);
+                document.getElementById('drawer-backdrop').onclick = () => this.toggleDrawer(false);
+                document.getElementById('btn-open-library').onclick = () => this.openLibraryModal();
+
+                // Keyboard escape
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape') {
+                        this.toggleDrawer(false);
+                        this.closeLibraryModal();
+                        this.closePediatricCalc();
+                        this.closeChecklistModal();
+                    }
+                });
+            }
+
+            toggleDrawer(open) {
+                const drawer = document.getElementById('drawer');
+                const backdrop = document.getElementById('drawer-backdrop');
+                if (open) {
+                    backdrop.classList.remove('hidden');
+                    setTimeout(() => backdrop.classList.remove('opacity-0'), 10);
+                    drawer.classList.remove('-translate-x-full');
+                } else {
+                    backdrop.classList.add('opacity-0');
+                    drawer.classList.add('-translate-x-full');
+                    setTimeout(() => backdrop.classList.add('hidden'), 300);
+                }
+            }
+
+            // Manejo de Archivos e Indexación
+            async handleFiles(files) {
+                for (let file of files) {
+                    let text = "";
+                    if (file.type === "application/pdf" || file.name.endsWith(".pdf")) {
+                        text = await this.extractPdfText(file);
+                    } else {
+                        text = await file.text();
+                    }
+
+                    if (text.trim().length > 0) {
+                        const chunks = this.chunkText(text, 600);
+                        const transaction = this.db.transaction(["documents"], "readwrite");
+                        const store = transaction.objectStore("documents");
+                        
+                        store.add({
+                            name: file.name,
+                            date: new Date().toLocaleDateString(),
+                            chunks: chunks
+                        });
+                        
+                        transaction.oncomplete = () => this.refreshDocList();
+                    }
+                }
+            }
+
+            async extractPdfText(file) {
+                if (!window.pdfjsLib) {
+                    alert("PDF.js no disponible offline. Por favor use archivos TXT, MD o HTML.");
+                    return "";
+                }
+                try {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                    let fullText = "";
+                    for (let i = 1; i <= pdf.numPages; i++) {
+                        const page = await pdf.getPage(i);
+                        const content = await page.getTextContent();
+                        const pageText = content.items.map(item => item.str).join(" ");
+                        fullText += ` [Pág ${i}] ` + pageText;
+                    }
+                    return fullText;
+                } catch (e) {
+                    console.error("Error leyendo PDF:", e);
+                    return "";
+                }
+            }
+
+            chunkText(text, size) {
+                const words = text.split(/\s+/);
+                const chunks = [];
+                for (let i = 0; i < words.length; i += size) {
+                    chunks.push(words.slice(i, i + size).join(" "));
+                }
+                return chunks;
+            }
+
+            async refreshDocList() {
+                const transaction = this.db.transaction(["documents"], "readonly");
+                const store = transaction.objectStore("documents");
+                const request = store.getAll();
+                
+                request.onsuccess = () => {
+                    this.docs = request.result;
+                    document.getElementById('doc-count-badge').innerText = `${this.docs.length} Docs`;
+                    
+                    const listEl = document.getElementById('indexed-docs-list');
+                    if (this.docs.length === 0) {
+                        listEl.innerHTML = `<div class="text-xs text-gray-400 italic">No hay documentos indexados.</div>`;
+                        return;
+                    }
+
+                    listEl.innerHTML = this.docs.map(doc => `
+                        <div class="flex items-center justify-between p-2 rounded-lg bg-gray-100 dark:bg-gemini-active text-xs">
+                            <div class="truncate max-w-[200px] font-medium">
+                                <i class="fa-regular fa-file-lines text-blue-400 mr-1.5"></i>
+                                ${doc.name}
+                            </div>
+                            <button onclick="app.deleteDoc(${doc.id})" class="text-red-400 hover:text-red-600 p-1">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        </div>
+                    `).join('');
+                };
+            }
+
+            deleteDoc(id) {
+                const transaction = this.db.transaction(["documents"], "readwrite");
+                transaction.objectStore("documents").delete(id);
+                transaction.oncomplete = () => this.refreshDocList();
+            }
+
+            clearLibrary() {
+                const transaction = this.db.transaction(["documents"], "readwrite");
+                transaction.objectStore("documents").clear();
+                transaction.oncomplete = () => this.refreshDocList();
+            }
+
+            // Búsqueda y Algoritmo BM25 Simplificado
+            handleSearch(e) {
+                if (e) e.preventDefault();
+                const query = document.getElementById('search-input').value.trim();
+                if (!query) return;
+                this.search(query);
+            }
+
+            quickSearch(term) {
+                document.getElementById('search-input').value = term;
+                this.toggleDrawer(false);
+                this.search(term);
+            }
+
+            search(query) {
+                document.getElementById('initial-state').classList.add('hidden');
+                document.getElementById('results-container').classList.remove('hidden');
+
+                // Normalización y expansión de query
+                const cleanQuery = query.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                let searchTerms = cleanQuery.split(/\s+/);
+                
+                // Expandir sinónimos clínicos
+                for (let [key, syns] of Object.entries(CLINICAL_SYNONYMS)) {
+                    if (cleanQuery.includes(key)) {
+                        syns.forEach(s => searchTerms.push(...s.split(/\s+/)));
+                    }
+                }
+                searchTerms = [...new Set(searchTerms)];
+
+                const results = [];
+
+                // Score Chunks
+                this.docs.forEach(doc => {
+                    doc.chunks.forEach((chunk, idx) => {
+                        const normalizedChunk = chunk.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                        let score = 0;
+
+                        searchTerms.forEach(term => {
+                            if (term.length < 2) return;
+                            const matches = (normalizedChunk.match(new RegExp(term, 'g')) || []).length;
+                            score += matches * 2;
+                        });
+
+                        // Bonificación frase exacta
+                        if (normalizedChunk.includes(cleanQuery)) {
+                            score += 10;
+                        }
+
+                        if (score > 0) {
+                            results.push({
+                                docName: doc.name,
+                                chunkIdx: idx + 1,
+                                text: chunk,
+                                score: score
+                            });
+                        }
+                    });
+                });
+
+                results.sort((a, b) => b.score - a.score);
+
+                this.renderResults(results, query, searchTerms);
+            }
+
+            renderResults(results, rawQuery, searchTerms) {
+                const consensusPanel = document.getElementById('consensus-panel');
+                const consensusBullets = document.getElementById('consensus-bullets');
+                const citationsList = document.getElementById('citations-list');
+                const countLabel = document.getElementById('results-count-label');
+
+                if (results.length === 0) {
+                    consensusPanel.classList.add('hidden');
+                    countLabel.innerText = "0 Citas encontradas";
+                    citationsList.innerHTML = `
+                        <div class="p-6 text-center bg-gray-50 dark:bg-gemini-card rounded-2xl border border-gray-200 dark:border-gemini-border">
+                            <i class="fa-solid fa-circle-exclamation text-amber-500 text-2xl mb-2"></i>
+                            <p class="text-sm font-semibold">No se encontraron coincidencias directas en su bibliografía.</p>
+                            <p class="text-xs text-gray-400 mt-1">Pruebe utilizando abreviaturas o sinónimos clínicos (ej. LAST, PONV, HM, RCP).</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                countLabel.innerText = `${results.length} Fragmentos encontrados`;
+
+                // 1. GENERAR CONSENSO EXTRACTIVO (Puntos Clave)
+                const sentences = [];
+                results.slice(0, 5).forEach(res => {
+                    const splitSentences = res.text.split(/(?<=[.?!])\s+/);
+                    splitSentences.forEach(s => {
+                        if (s.length > 20 && searchTerms.some(term => s.toLowerCase().includes(term))) {
+                            sentences.push(s.trim());
+                        }
+                    });
+                });
+
+                const topConsensus = [...new Set(sentences)].slice(0, 4);
+                if (topConsensus.length > 0) {
+                    consensusPanel.classList.remove('hidden');
+                    consensusBullets.innerHTML = topConsensus.map(sent => `
+                        <div class="flex items-start gap-2">
+                            <i class="fa-solid fa-circle-dot text-[10px] text-blue-400 mt-1 shrink-0"></i>
+                            <span>${this.highlightTerms(sent, searchTerms)}</span>
+                        </div>
+                    `).join('');
+                } else {
+                    consensusPanel.classList.add('hidden');
+                }
+
+                // 2. RENDEREAR LISTA DE CITAS
+                citationsList.innerHTML = results.slice(0, 15).map((res, i) => `
+                    <div class="p-4 rounded-2xl bg-white dark:bg-gemini-card border border-gray-200 dark:border-gemini-border space-y-2 shadow-sm">
+                        <div class="flex items-center justify-between text-xs text-gray-400 border-b border-gray-100 dark:border-gemini-border pb-2">
+                            <span class="font-semibold text-blue-500 truncate max-w-[220px]">
+                                <i class="fa-solid fa-bookmark mr-1"></i> ${res.docName}
+                            </span>
+                            <span>Fragmento #${res.chunkIdx}</span>
+                        </div>
+                        <div class="text-xs leading-relaxed selectable text-gray-800 dark:text-gemini-text">
+                            "...${this.highlightTerms(res.text, searchTerms)}..."
+                        </div>
+                        <div class="pt-2 flex justify-end">
+                            <button onclick="app.copyCitation('${this.escapeQuotes(res.docName)}', '${this.escapeQuotes(res.text)}')" class="px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-gemini-active hover:bg-gray-200 dark:hover:bg-gray-700 text-[11px] font-medium transition flex items-center gap-1.5">
+                                <i class="fa-regular fa-copy"></i>
+                                <span>Copiar con Cita</span>
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            highlightTerms(text, terms) {
+                let highlighted = text;
+                terms.forEach(term => {
+                    if (term.length < 2) return;
+                    const regex = new RegExp(`(${term})`, 'gi');
+                    highlighted = highlighted.replace(regex, '<mark>$1</mark>');
+                });
+                return highlighted;
+            }
+
+            escapeQuotes(str) {
+                return str.replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, ' ');
+            }
+
+            copyCitation(docName, text) {
+                const citationText = `"${text.trim()}"\n\nFuente: [${docName}] - Extraído vía AnesMeta`;
+                
+                // Fallback execCommand para iFrame compliance
+                const dummy = document.createElement("textarea");
+                document.body.appendChild(dummy);
+                dummy.value = citationText;
+                dummy.select();
+                document.execCommand("copy");
+                document.body.removeChild(dummy);
+
+                alert("Cita copiada al portapapeles.");
+            }
+
+            // MODALES MODULO
+            openLibraryModal() {
+                this.toggleDrawer(false);
+                document.getElementById('modal-library').classList.remove('hidden');
+            }
+            closeLibraryModal() {
+                document.getElementById('modal-library').classList.add('hidden');
+            }
+
+            openPediatricCalc() {
+                this.toggleDrawer(false);
+                this.calculatePediatricDoses();
+                document.getElementById('modal-pediatric').classList.remove('hidden');
+            }
+            closePediatricCalc() {
+                document.getElementById('modal-pediatric').classList.add('hidden');
+            }
+
+            calculatePediatricDoses() {
+                const weight = parseFloat(document.getElementById('ped-weight').value) || 10;
+                const tbody = document.getElementById('pediatric-doses-table');
+                
+                tbody.innerHTML = PEDIATRIC_DRUGS.map(d => `
+                    <tr>
+                        <td class="p-2 font-medium text-gray-900 dark:text-gemini-text">${d.name}</td>
+                        <td class="p-2 text-gray-400 text-[11px]">${d.dose}</td>
+                        <td class="p-2 text-right font-bold text-blue-500">${d.calc(weight)}</td>
+                    </tr>
+                `).join('');
+            }
+
+            openChecklistModal() {
+                this.toggleDrawer(false);
+                this.loadChecklist('hm');
+                document.getElementById('modal-checklist').classList.remove('hidden');
+            }
+            closeChecklistModal() {
+                document.getElementById('modal-checklist').classList.add('hidden');
+                this.resetTimer();
+            }
+
+            loadChecklist(type) {
+                const btnHm = document.getElementById('tab-hm');
+                const btnLast = document.getElementById('tab-last');
+                
+                if (type === 'hm') {
+                    btnHm.className = "flex-1 py-2 text-xs font-bold rounded-xl border border-red-500/30 bg-red-500/10 text-red-400";
+                    btnLast.className = "flex-1 py-2 text-xs font-bold rounded-xl border border-gray-300 dark:border-gemini-border text-gray-400";
+                } else {
+                    btnLast.className = "flex-1 py-2 text-xs font-bold rounded-xl border border-red-500/30 bg-red-500/10 text-red-400";
+                    btnHm.className = "flex-1 py-2 text-xs font-bold rounded-xl border border-gray-300 dark:border-gemini-border text-gray-400";
+                }
+
+                const container = document.getElementById('checklist-steps');
+                container.innerHTML = CHECKLIST_DATA[type].map((step, idx) => `
+                    <label class="flex items-start gap-3 p-3 rounded-xl bg-gray-50 dark:bg-gemini-sidebar border border-gray-200 dark:border-gemini-border cursor-pointer">
+                        <input type="checkbox" class="mt-0.5 rounded text-red-600 focus:ring-0 w-4 h-4">
+                        <span class="text-xs font-medium leading-tight">${step}</span>
+                    </label>
+                `).join('');
+            }
+
+            toggleTimer() {
+                const btn = document.getElementById('btn-timer-toggle');
+                if (this.timerInterval) {
+                    clearInterval(this.timerInterval);
+                    this.timerInterval = null;
+                    btn.innerText = "Reanudar";
+                    btn.className = "px-3 py-1.5 bg-green-600 text-white text-xs font-bold rounded-lg";
+                } else {
+                    this.timerInterval = setInterval(() => {
+                        this.timerSeconds++;
+                        const m = String(Math.floor(this.timerSeconds / 60)).padStart(2, '0');
+                        const s = String(this.timerSeconds % 60).padStart(2, '0');
+                        document.getElementById('timer-display').innerText = `${m}:${s}`;
+                    }, 1000);
+                    btn.innerText = "Pausar";
+                    btn.className = "px-3 py-1.5 bg-amber-600 text-white text-xs font-bold rounded-lg";
+                }
+            }
+
+            resetTimer() {
+                if (this.timerInterval) clearInterval(this.timerInterval);
+                this.timerInterval = null;
+                this.timerSeconds = 0;
+                document.getElementById('timer-display').innerText = "00:00";
+                const btn = document.getElementById('btn-timer-toggle');
+                btn.innerText = "Iniciar";
+                btn.className = "px-3 py-1.5 bg-red-600 text-white text-xs font-bold rounded-lg";
+            }
+        }
+
+        // Instanciación global
+        let app;
+        window.onload = () => {
+            app = new AnesthesiaApp();
+        };
+    </script>
+</body>
+</html>
